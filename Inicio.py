@@ -1,195 +1,265 @@
 import pandas as pd
 import streamlit as st
-from PIL import Image
 import numpy as np
 from datetime import datetime
 
-# Page configuration
+# --- Configuración de la Página Mejorada ---
 st.set_page_config(
     page_title="Análisis de Sensores - Mi Ciudad",
-    page_icon="📊",
-    layout="wide"
+    page_icon="🏙️", # Nuevo ícono más relevante
+    layout="wide", # Usa todo el ancho disponible
+    initial_sidebar_state="expanded" # Expande la barra lateral por defecto
 )
 
-# Custom CSS
+# --- Custom CSS para Estilo Moderno ---
 st.markdown("""
     <style>
-    .main {
-        padding: 2rem;
+    /* Fondo principal y espaciado */
+    .stApp {
+        background-color: #f0f2f6; /* Un color de fondo suave */
+        color: #1c1f24;
     }
-    .stAlert {
-        margin-top: 1rem;
+    /* Estilo del título principal */
+    .stApp > header {
+        background-color: #0e1117; 
+        padding: 0.5rem 0 0.5rem 1rem;
+    }
+    /* Contenedor principal con sombra */
+    .stMarkdown.main {
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        background-color: white;
+    }
+    /* Estilo para st.metric (más grande y con color) */
+    [data-testid="stMetricValue"] {
+        font-size: 2.5rem;
+        color: #26b3a0; /* Color de acento (verde azulado) */
+    }
+    /* Estilo para el botón de descarga */
+    .stDownloadButton > button {
+        background-color: #007bff; /* Azul primario */
+        color: white;
+        border-radius: 5px;
+        padding: 0.5rem 1rem;
+    }
+    /* Encabezados de pestaña */
+    .stTabs [data-testid="stMarkdownContainer"] {
+        font-weight: bold;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Title and description
-st.title('📊 Análisis de datos de Sensores en Mi Ciudad')
-st.markdown("""
-    Esta aplicación permite analizar datos de sensores
-    recolectados en diferentes puntos de la ciudad.
-""")
+# --- Sidebar para Controles Principales ---
+with st.sidebar:
+    st.image("https://upload.wikimedia.org/wikipedia/commons/e/e0/Universidad_EAFIT_logo.svg", width=150)
+    st.title("⚙️ Controles de Datos")
+    
+    # Carga de Archivo
+    uploaded_file = st.file_uploader('1. Seleccione archivo CSV', type=['csv'])
+    st.info("💡 Consejo: Su archivo debe contener al menos una columna de tiempo (opcional) y una columna numérica de datos de sensor.")
+    
+# --- Título e Información General ---
+st.title('📈 Análisis Interactivo de Sensores Urbanos')
+st.markdown("Bienvenido al panel de control. Utilice la barra lateral para cargar datos y las pestañas para el análisis detallado.")
+st.markdown("---")
 
-# Create map data for EAFIT
+# --- Ubicación del Sensor (Mantenida por su relevancia) ---
 eafit_location = pd.DataFrame({
     'lat': [6.2006],
     'lon': [-75.5783],
     'location': ['Universidad EAFIT']
 })
-
-# Display map
-st.subheader("📍 Ubicación de los Sensores - Universidad EAFIT")
+st.subheader("📍 Ubicación de Referencia (EAFIT)")
 st.map(eafit_location, zoom=15)
+st.markdown("---")
 
-# File uploader
-uploaded_file = st.file_uploader('Seleccione archivo CSV', type=['csv'])
+# --- Bloque de Procesamiento de Datos ---
+df1 = None # Inicializar df1
 
 if uploaded_file is not None:
     try:
-        # Load and process data
-        df1 = pd.read_csv(uploaded_file)
+        df_original = pd.read_csv(uploaded_file)
+        df1 = df_original.copy()
         
-        # Renombrar la columna a 'variable'
-        # Asume que la primera columna después de 'Time' es la variable de interés
-        # O busca una columna específica y la renombra
-        if 'Time' in df1.columns:
-            # Si existe Time, renombrar la otra columna a 'variable'
-            other_columns = [col for col in df1.columns if col != 'Time']
-            if len(other_columns) > 0:
-                df1 = df1.rename(columns={other_columns[0]: 'variable'})
-        else:
-            # Si no existe Time, renombrar la primera columna a 'variable'
-            df1 = df1.rename(columns={df1.columns[0]: 'variable'})
-        
-        # Procesar columna de tiempo si existe
-        if 'Time' in df1.columns:
-            df1['Time'] = pd.to_datetime(df1['Time'])
-            df1 = df1.set_index('Time')
-
-        # Create tabs for different analyses
-        tab1, tab2, tab3, tab4 = st.tabs(["📈 Visualización", "📊 Estadísticas", "🔍 Filtros", "🗺️ Información del Sitio"])
-
-        with tab1:
-            st.subheader('Visualización de Datos')
+        # --- Controles de Columna en la Sidebar (para mantener limpio el main) ---
+        with st.sidebar:
+            st.subheader("2. Selección de Columnas")
             
-            # Chart type selector
-            chart_type = st.selectbox(
-                "Seleccione tipo de gráfico",
-                ["Línea", "Área", "Barra"]
+            # 1. Seleccionar columna de tiempo
+            time_col_options = ['(Sin Columna de Tiempo)'] + list(df1.columns)
+            time_col = st.selectbox(
+                "Columna de **Tiempo (Time)**",
+                time_col_options,
+                index=df1.columns.get_loc('Time') + 1 if 'Time' in df1.columns else 0
+            )
+
+            # 2. Seleccionar columna de variable de análisis
+            variable_col = st.selectbox(
+                "Columna de **Variable a Analizar**",
+                df1.columns,
+                index=1 if len(df1.columns) > 1 and df1.columns[0] == time_col else 0
             )
             
-            # Create plot based on selection
-            if chart_type == "Línea":
-                st.line_chart(df1["variable"])
-            elif chart_type == "Área":
-                st.area_chart(df1["variable"])
-            else:
-                st.bar_chart(df1["variable"])
+        # --- Procesamiento (El mismo robusto que antes) ---
+        if time_col != '(Sin Columna de Tiempo)':
+            df1[time_col] = pd.to_datetime(df1[time_col], errors='coerce')
+            df1 = df1.rename(columns={time_col: 'Time'}).set_index('Time').sort_index()
+            df1.dropna(subset=['Time'], inplace=True)
+            
+        if variable_col != 'variable':
+             df1 = df1.rename(columns={variable_col: 'variable'})
 
-            # Raw data display with toggle
-            if st.checkbox('Mostrar datos crudos'):
-                st.write(df1)
+        df1['variable'] = pd.to_numeric(df1['variable'], errors='coerce')
+        df1.dropna(subset=['variable'], inplace=True)
 
+        if df1.empty:
+            st.error("⚠️ El DataFrame está vacío o no contiene datos numéricos válidos después del filtrado.")
+            st.stop()
+        
+        # --- Creación de Pestañas con Emojis ---
+        tab1, tab2, tab3, tab4 = st.tabs(["📊 Visualización General", "📈 Estadísticas Clave", "⚙️ Filtros y Descarga", "ℹ️ Detalles del Sitio"])
+
+        # ==================================
+        # 1. Pestaña de Visualización General
+        # ==================================
+        with tab1:
+            st.header('Gráfico de la Variable Seleccionada')
+            
+            col_chart, col_raw = st.columns([3, 1])
+            
+            with col_raw:
+                chart_type = st.radio(
+                    "Tipo de Gráfico",
+                    ["Línea", "Área", "Barra"],
+                    index=0,
+                    horizontal=True
+                )
+            
+            with col_chart:
+                if chart_type == "Línea":
+                    st.line_chart(df1["variable"])
+                elif chart_type == "Área":
+                    st.area_chart(df1["variable"])
+                else:
+                    st.bar_chart(df1["variable"])
+                    
+            if st.checkbox('Mostrar primeras filas del DataFrame (Datos Limpios)', value=False):
+                st.dataframe(df1.head(10), use_container_width=True)
+
+        # ==================================
+        # 2. Pestaña de Estadística Clave
+        # ==================================
         with tab2:
-            st.subheader('Análisis Estadístico')
+            st.header('Resumen y Métricas Rápidas')
             
-            # Statistical summary
-            stats_df = df1["variable"].describe()
+            stats_df = df1["variable"].describe().to_frame().round(3)
             
-            col1, col2 = st.columns(2)
+            # --- Diseño de Métricas en Tres Columnas ---
             
-            with col1:
-                st.dataframe(stats_df)
+            col_mean, col_max, col_min, col_std = st.columns(4)
             
-            with col2:
-                # Additional statistics
-                st.metric("Valor Promedio", f"{stats_df['mean']:.2f}")
-                st.metric("Valor Máximo", f"{stats_df['max']:.2f}")
-                st.metric("Valor Mínimo", f"{stats_df['min']:.2f}")
-                st.metric("Desviación Estándar", f"{stats_df['std']:.2f}")
+            # Aseguramos que los valores existan antes de acceder
+            mean_val = stats_df.loc['mean'].iloc[0]
+            max_val = stats_df.loc['max'].iloc[0]
+            min_val = stats_df.loc['min'].iloc[0]
+            std_val = stats_df.loc['std'].iloc[0]
+            
+            col_mean.metric("Promedio (Media)", f"{mean_val:,.2f}")
+            col_max.metric("Máximo Absoluto", f"{max_val:,.2f}")
+            col_min.metric("Mínimo Absoluto", f"{min_val:,.2f}")
+            col_std.metric("Desviación Estándar", f"{std_val:,.2f}")
+            
+            st.markdown("---")
+            st.subheader("Tabla de Resumen Estadístico")
+            st.dataframe(stats_df, use_container_width=True)
 
+        # ==================================
+        # 3. Pestaña de Filtros y Descarga
+        # ==================================
         with tab3:
-            st.subheader('Filtros de Datos')
+            st.header('Filtros de Datos por Rango')
             
-            # Calcular rango de valores
-            min_value = float(df1["variable"].min())
-            max_value = float(df1["variable"].max())
-            mean_value = float(df1["variable"].mean())
+            min_data_value = float(df1["variable"].min())
+            max_data_value = float(df1["variable"].max())
             
-            # Verificar si hay variación en los datos
-            if min_value == max_value:
-                st.warning(f"⚠️ Todos los valores en el dataset son iguales: {min_value:.2f}")
-                st.info("No es posible aplicar filtros cuando no hay variación en los datos.")
+            if min_data_value == max_data_value:
+                st.warning(f"⚠️ Todos los valores son iguales: {min_data_value:.2f}. No se puede aplicar filtro de rango.")
                 st.dataframe(df1)
             else:
-                col1, col2 = st.columns(2)
+                col_slider, col_info = st.columns([3, 1])
                 
-                with col1:
-                    # Minimum value filter
-                    min_val = st.slider(
-                        'Valor mínimo',
-                        min_value,
-                        max_value,
-                        mean_value,
-                        key="min_val"
+                with col_slider:
+                    # Usar un slider de rango para simplificar la interfaz
+                    range_values = st.slider(
+                        'Seleccione el Rango Mínimo y Máximo de Valores',
+                        min_data_value,
+                        max_data_value,
+                        (min_data_value, max_data_value),
+                        key="range_val_ui",
+                        format="%.2f"
                     )
-                    
-                    filtrado_df_min = df1[df1["variable"] > min_val]
-                    st.write(f"Registros con valor superior a {min_val:.2f}:")
-                    st.dataframe(filtrado_df_min)
-                    
-                with col2:
-                    # Maximum value filter
-                    max_val = st.slider(
-                        'Valor máximo',
-                        min_value,
-                        max_value,
-                        mean_value,
-                        key="max_val"
-                    )
-                    
-                    filtrado_df_max = df1[df1["variable"] < max_val]
-                    st.write(f"Registros con valor inferior a {max_val:.2f}:")
-                    st.dataframe(filtrado_df_max)
-
-                # Download filtered data
-                if st.button('Descargar datos filtrados'):
-                    csv = filtrado_df_min.to_csv().encode('utf-8')
-                    st.download_button(
-                        label="Descargar CSV",
-                        data=csv,
-                        file_name='datos_filtrados.csv',
-                        mime='text/csv',
-                    )
-
+                
+                min_f, max_f = range_values
+                
+                # Aplicar filtro
+                filtrado_df = df1[(df1["variable"] >= min_f) & (df1["variable"] <= max_f)]
+                
+                with col_info:
+                    st.metric("Registros Filtrados", f"{len(filtrado_df)}", delta=f"{len(df1) - len(filtrado_df)} excluidos")
+                
+                st.markdown("---")
+                st.subheader("Vista Previa de Datos Filtrados")
+                st.caption(f"Mostrando {len(filtrado_df)} de {len(df1)} registros en el rango **[{min_f:.2f}, {max_f:.2f}]**.")
+                st.dataframe(filtrado_df, use_container_width=True)
+                
+                # Botón de Descarga
+                csv = filtrado_df.to_csv().encode('utf-8')
+                st.download_button(
+                    label="💾 Descargar Datos Filtrados (CSV)",
+                    data=csv,
+                    file_name=f'datos_filtrados_{variable_col}_{datetime.now().strftime("%Y%m%d")}.csv',
+                    mime='text/csv',
+                    key='download_btn_ui'
+                )
+        
+        # ==================================
+        # 4. Pestaña de Información
+        # ==================================
         with tab4:
-            st.subheader("Información del Sitio de Medición")
+            st.header("Información del Sitio de Medición")
             
-            col1, col2 = st.columns(2)
+            col_site, col_details = st.columns(2)
             
-            with col1:
-                st.write("### Ubicación del Sensor")
-                st.write("**Universidad EAFIT**")
-                st.write("- Latitud: 6.2006")
-                st.write("- Longitud: -75.5783")
-                st.write("- Altitud: ~1,495 metros sobre el nivel del mar")
+            with col_site:
+                st.subheader("Ubicación")
+                st.markdown(f"""
+                - **Sitio:** Universidad EAFIT
+                - **Latitud:** `{eafit_location['lat'].iloc[0]}`
+                - **Longitud:** `{eafit_location['lon'].iloc[0]}`
+                - **Altitud:** ~1,495 metros sobre el nivel del mar
+                """)
             
-            with col2:
-                st.write("### Detalles del Sensor")
-                st.write("- Tipo: ESP32")
-                st.write("- Variable medida: Según configuración del sensor")
-                st.write("- Frecuencia de medición: Según configuración")
-                st.write("- Ubicación: Campus universitario")
+            with col_details:
+                st.subheader("Detalles del Sensor y Datos")
+                st.markdown(f"""
+                - **Tipo de Sensor:** ESP32 (Referencial)
+                - **Variable Analizada:** **{variable_col}**
+                - **Registros Totales:** `{len(df1)}`
+                - **Rango de Tiempo:** De **{df1.index.min().strftime('%Y-%m-%d %H:%M')}** a **{df1.index.max().strftime('%Y-%m-%d %H:%M')}**
+                """)
+
 
     except Exception as e:
-        st.error(f'Error al procesar el archivo: {str(e)}')
-        st.info('Asegúrese de que el archivo CSV tenga al menos una columna con datos.')
+        st.error(f'❌ Error crítico al procesar el archivo: {str(e)}')
+        st.info('Asegúrese de que el archivo CSV esté bien formado y que haya seleccionado las columnas correctas en el panel lateral.')
 else:
-    st.warning('Por favor, cargue un archivo CSV para comenzar el análisis.')
+    st.info('👆 Por favor, cargue un archivo CSV desde la barra lateral izquierda para comenzar el análisis.')
     
-# Footer
+# --- Footer ---
+st.markdown("---")
 st.markdown("""
-    ---
-    Desarrollado para el análisis de datos de sensores urbanos.
-    Ubicación: Universidad EAFIT, Medellín, Colombia
-""")
+    <div style='text-align: center; font-size: small; color: gray;'>
+        Aplicación de Análisis de Sensores Urbanos | Desarrollado para EAFIT
+    </div>
+""", unsafe_allow_html=True)
